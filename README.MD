@@ -17,3 +17,21 @@ dependencies:
 - scipy
 - sklearn
 - pygco
+
+
+How to setup and run:
+1. if there is no venv folder, run `py -3 -m venv venv`
+2. activate the venv with command `venv\Scripts\activate`
+3. after the venv active, install flask witch command `pip install flask`
+4. install Microsoft Visual for C++ 14.0 or higher 
+5. install dependencies:
+    `pip3 install numpy scipy sklearn visdom scikit-learn pandas vedo pygo torch==1.8.2+cu102` if your PC does not have CUDA (GPU), remove +cu102
+6. run below command:
+    `set FLASK_ENV=development` (optional)
+    `set FLASK_APP=app.py`
+    `flask run`
+7. if there is still error, run `pip install torchvision==0.9.2+cu102 torchaudio===0.8.2 -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html` if your PC does not have CUDA (GPU), remove +cu102
+8. do step number 6 again.
+
+Call the api like this:
+`http://127.0.0.1:5000/segment/max/D:/NyeMan/KULIAH S2/Thesis/3Shape new-20220223T024758Z-001/3Shape new/1.MNF Perempuan -18thn/MNF UpperJawScan.stl`
