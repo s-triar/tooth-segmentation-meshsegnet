@@ -17,7 +17,9 @@ from pygco import cut_from_graph
 import glob
 import utils
 
-def predict(modelpath, filepath, pathsave='./saved'):
+
+# pred_option = ['all','d','d_r','r']
+def predict(modelpath, filepath, pathsave='./saved', pred_option='all'):
     upsampling_method = 'KNN'
     if not os.path.exists(pathsave):
         os.mkdir(pathsave)
@@ -131,89 +133,93 @@ def predict(modelpath, filepath, pathsave='./saved'):
         # output downsampled predicted labels
         mesh2 = mesh_d.clone()
         mesh2.addCellArray(predicted_labels_d, 'Label')
-        vedo.write(mesh2, os.path.join(pathsave, '{}_downsampling.vtp'.format('out')))
-        # refinement
-        print('\tRefining by pygco...')
-        round_factor = 100
-        patch_prob_output[patch_prob_output<1.0e-6] = 1.0e-6
+        if(pred_option=='d' or pred_option =='all'):
+            vedo.write(mesh2, os.path.join(pathsave, '{}_downsampling.vtp'.format('out')))
+        if('r' in pred_option or 'd_r' == pred_option or pred_option=='all'):
+            # refinement
+            print('\tRefining by pygco...')
+            round_factor = 100
+            patch_prob_output[patch_prob_output<1.0e-6] = 1.0e-6
 
-        # unaries
-        unaries = -round_factor * np.log10(patch_prob_output)
-        unaries = unaries.astype(np.int32)
-        unaries = unaries.reshape(-1, num_classes)
+            # unaries
+            unaries = -round_factor * np.log10(patch_prob_output)
+            unaries = unaries.astype(np.int32)
+            unaries = unaries.reshape(-1, num_classes)
 
-        # parawise
-        pairwise = (1 - np.eye(num_classes, dtype=np.int32))
+            # parawise
+            pairwise = (1 - np.eye(num_classes, dtype=np.int32))
 
-        #edges
-        normals = mesh_d.getCellArray('Normal').copy() # need to copy, they use the same memory address
-        cells = original_cells_d.copy()
-        barycenters = mesh_d.cellCenters() # don't need to copy
-        cell_ids = np.asarray(mesh_d.faces())
+            #edges
+            normals = mesh_d.getCellArray('Normal').copy() # need to copy, they use the same memory address
+            cells = original_cells_d.copy()
+            barycenters = mesh_d.cellCenters() # don't need to copy
+            cell_ids = np.asarray(mesh_d.faces())
 
-        lambda_c = 30
-        edges = np.empty([1, 3], order='C')
-        for i_node in range(cells.shape[0]):
-            # Find neighbors
-            nei = np.sum(np.isin(cell_ids, cell_ids[i_node, :]), axis=1)
-            nei_id = np.where(nei==2)
-            for i_nei in nei_id[0][:]:
-                if i_node < i_nei:
-                    cos_theta = np.dot(normals[i_node, 0:3], normals[i_nei, 0:3])/np.linalg.norm(normals[i_node, 0:3])/np.linalg.norm(normals[i_nei, 0:3])
-                    if cos_theta >= 1.0:
-                        cos_theta = 0.9999
-                    theta = np.arccos(cos_theta)
-                    phi = np.linalg.norm(barycenters[i_node, :] - barycenters[i_nei, :])
-                    if theta > np.pi/2.0:
-                        edges = np.concatenate((edges, np.array([i_node, i_nei, -np.log10(theta/np.pi)*phi]).reshape(1, 3)), axis=0)
-                    else:
-                        beta = 1 + np.linalg.norm(np.dot(normals[i_node, 0:3], normals[i_nei, 0:3]))
-                        edges = np.concatenate((edges, np.array([i_node, i_nei, -beta*np.log10(theta/np.pi)*phi]).reshape(1, 3)), axis=0)
-        edges = np.delete(edges, 0, 0)
-        edges[:, 2] *= lambda_c*round_factor
-        edges = edges.astype(np.int32)
+            lambda_c = 30
+            edges = np.empty([1, 3], order='C')
+            for i_node in range(cells.shape[0]):
+                # Find neighbors
+                nei = np.sum(np.isin(cell_ids, cell_ids[i_node, :]), axis=1)
+                nei_id = np.where(nei==2)
+                for i_nei in nei_id[0][:]:
+                    if i_node < i_nei:
+                        cos_theta = np.dot(normals[i_node, 0:3], normals[i_nei, 0:3])/np.linalg.norm(normals[i_node, 0:3])/np.linalg.norm(normals[i_nei, 0:3])
+                        if cos_theta >= 1.0:
+                            cos_theta = 0.9999
+                        theta = np.arccos(cos_theta)
+                        phi = np.linalg.norm(barycenters[i_node, :] - barycenters[i_nei, :])
+                        if theta > np.pi/2.0:
+                            edges = np.concatenate((edges, np.array([i_node, i_nei, -np.log10(theta/np.pi)*phi]).reshape(1, 3)), axis=0)
+                        else:
+                            beta = 1 + np.linalg.norm(np.dot(normals[i_node, 0:3], normals[i_nei, 0:3]))
+                            edges = np.concatenate((edges, np.array([i_node, i_nei, -beta*np.log10(theta/np.pi)*phi]).reshape(1, 3)), axis=0)
+            edges = np.delete(edges, 0, 0)
+            edges[:, 2] *= lambda_c*round_factor
+            edges = edges.astype(np.int32)
 
-        refine_labels = cut_from_graph(edges, unaries, pairwise)
-        refine_labels = refine_labels.reshape([-1, 1])
+            refine_labels = cut_from_graph(edges, unaries, pairwise)
+            refine_labels = refine_labels.reshape([-1, 1])
 
-        # output refined result
-        mesh3 = mesh_d.clone()
-        mesh3.addCellArray(refine_labels, 'Label')
-        vedo.write(mesh3, os.path.join(pathsave, '{}_downsampling_refined.vtp'.format('out')))
+            # output refined result
+            mesh3 = mesh_d.clone()
+            mesh3.addCellArray(refine_labels, 'Label')
+        if(pred_option=='d_r' or pred_option =='all'):
+            vedo.write(mesh3, os.path.join(pathsave, '{}_downsampling_refined.vtp'.format('out')))
 
-        # upsampling
-        print('\tUpsampling...')
-        if mesh.NCells() > 100000:
-            target_num = 100000 # set max number of cells
-            ratio = target_num/mesh.NCells() # calculate ratio
-            mesh.decimate(fraction=ratio)
-            print('Original contains too many cells, simpify to {} cells'.format(mesh.NCells()))
+        if(pred_option=='r' or pred_option=='all'):
+            # upsampling
+            print('\tUpsampling...')
+            if mesh.NCells() > 100000:
+                target_num = 100000 # set max number of cells
+                ratio = target_num/mesh.NCells() # calculate ratio
+                mesh.decimate(fraction=ratio)
+                print('Original contains too many cells, simpify to {} cells'.format(mesh.NCells()))
 
-        # get fine_cells
-        cells = np.zeros([mesh.NCells(), 9], dtype='float32')
-        for i in range(len(cells)):
-            cells[i][0], cells[i][1], cells[i][2] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(0)) # don't need to copy
-            cells[i][3], cells[i][4], cells[i][5] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(1)) # don't need to copy
-            cells[i][6], cells[i][7], cells[i][8] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(2)) # don't need to copy
+            # get fine_cells
+            cells = np.zeros([mesh.NCells(), 9], dtype='float32')
+            for i in range(len(cells)):
+                cells[i][0], cells[i][1], cells[i][2] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(0)) # don't need to copy
+                cells[i][3], cells[i][4], cells[i][5] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(1)) # don't need to copy
+                cells[i][6], cells[i][7], cells[i][8] = mesh.polydata().GetPoint(mesh.polydata().GetCell(i).GetPointId(2)) # don't need to copy
 
-        fine_cells = cells
+            fine_cells = cells
 
-        barycenters = mesh3.cellCenters() # don't need to copy
-        fine_barycenters = mesh.cellCenters() # don't need to copy
+            barycenters = mesh3.cellCenters() # don't need to copy
+            fine_barycenters = mesh.cellCenters() # don't need to copy
 
-        
-        
-        neigh = KNeighborsClassifier(n_neighbors=3)
-        # train KNN
-        #neigh.fit(mesh2.cells, np.ravel(refine_labels))
-        #fine_labels = neigh.predict(fine_cells)
+            
+            
+            neigh = KNeighborsClassifier(n_neighbors=3)
+            # train KNN
+            #neigh.fit(mesh2.cells, np.ravel(refine_labels))
+            #fine_labels = neigh.predict(fine_cells)
 
-        neigh.fit(barycenters, np.ravel(refine_labels))
-        fine_labels = neigh.predict(fine_barycenters)
-        fine_labels = fine_labels.reshape(-1, 1)
+            neigh.fit(barycenters, np.ravel(refine_labels))
+            fine_labels = neigh.predict(fine_barycenters)
+            fine_labels = fine_labels.reshape(-1, 1)
 
-        mesh.addCellArray(fine_labels, 'Label')
-        vedo.write(mesh, os.path.join(pathsave, '{}_refined.vtp'.format('out')))
+            mesh.addCellArray(fine_labels, 'Label')
+            vedo.write(mesh, os.path.join(pathsave, '{}_refined.vtp'.format('out')))
 
         #remove tmp folder
         shutil.rmtree(tmp_path)
